@@ -10,15 +10,18 @@ export const isCloudinaryConfigured = () => {
   );
 };
 
-export const uploadToCloudinary = async (filePath, folder = 'real-estate/properties') => {
+export const uploadToCloudinary = async (filePath, folder = 'real-estate/properties', options = {}) => {
   if (!isCloudinaryConfigured()) {
     return null;
   }
   try {
-    const result = await cloudinary.uploader.upload(filePath, {
+    const isPdf = typeof filePath === 'string' && filePath.toLowerCase().endsWith('.pdf');
+    const uploadOptions = {
       folder: folder,
-      resource_type: 'auto'
-    });
+      resource_type: options.resource_type || (isPdf ? 'raw' : 'auto'),
+      ...options
+    };
+    const result = await cloudinary.uploader.upload(filePath, uploadOptions);
     // Remove local file after successful upload to Cloudinary
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -33,10 +36,10 @@ export const uploadToCloudinary = async (filePath, folder = 'real-estate/propert
   }
 };
 
-export const deleteFromCloudinary = async (publicId) => {
+export const deleteFromCloudinary = async (publicId, resourceType = 'image') => {
   if (!isCloudinaryConfigured() || !publicId) return;
   try {
-    await cloudinary.uploader.destroy(publicId);
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
   } catch (err) {
     console.error('Cloudinary Delete Error:', err);
   }

@@ -36,19 +36,71 @@ export const createProject = async (req, res) => {
       return res.status(400).json({ message: 'Name, location, and price are required fields.' });
     }
 
-    if (!req.file) {
+    const mainImageFile = req.files?.image?.[0] || (req.files?.images && req.files.images[0]) || req.file;
+    const additionalImageFiles = req.files?.images || [];
+    const brochureFile = req.files?.brochure?.[0];
+
+    if (!mainImageFile && (!additionalImageFiles || additionalImageFiles.length === 0)) {
       return res.status(400).json({ message: 'Project image is required.' });
     }
 
-    let imagePath = `/uploads/projects/${req.file.filename}`;
+    // Process primary image
+    let imagePath = mainImageFile ? `/uploads/projects/${mainImageFile.filename}` : '';
     let publicId = '';
 
-    // If Cloudinary is configured, upload to Cloudinary into real-estate/properties/
-    if (isCloudinaryConfigured()) {
-      const cloudRes = await uploadToCloudinary(req.file.path, 'real-estate/properties');
+    if (mainImageFile && isCloudinaryConfigured()) {
+      const cloudRes = await uploadToCloudinary(mainImageFile.path, 'real-estate/properties');
       if (cloudRes && cloudRes.secure_url) {
         imagePath = cloudRes.secure_url;
         publicId = cloudRes.public_id;
+      }
+    }
+
+    // Process all project images (array)
+    const allImages = [];
+    if (imagePath) {
+      allImages.push(imagePath);
+    }
+
+    if (additionalImageFiles && additionalImageFiles.length > 0) {
+      for (const file of additionalImageFiles) {
+        if (mainImageFile && (file.filename === mainImageFile.filename || (file.originalname === mainImageFile.originalname && file.size === mainImageFile.size))) continue;
+
+        let extraPath = `/uploads/projects/${file.filename}`;
+        if (isCloudinaryConfigured()) {
+          try {
+            const cloudRes = await uploadToCloudinary(file.path, 'real-estate/properties');
+            if (cloudRes && cloudRes.secure_url) {
+              extraPath = cloudRes.secure_url;
+            }
+          } catch (cErr) {
+            console.error('Cloudinary multi-image upload error:', cErr.message);
+          }
+        }
+        allImages.push(extraPath);
+      }
+    }
+
+    if (!imagePath && allImages.length > 0) {
+      imagePath = allImages[0];
+    }
+
+    // Process brochure if uploaded
+    let brochureUrl = '';
+    let brochurePublicId = '';
+
+    if (brochureFile) {
+      brochureUrl = `/uploads/projects/${brochureFile.filename}`;
+      if (isCloudinaryConfigured()) {
+        try {
+          const cloudRes = await uploadToCloudinary(brochureFile.path, 'real-estate/brochures');
+          if (cloudRes && cloudRes.secure_url) {
+            brochureUrl = cloudRes.secure_url;
+            brochurePublicId = cloudRes.public_id;
+          }
+        } catch (bErr) {
+          console.error('Cloudinary brochure upload error:', bErr.message);
+        }
       }
     }
 
@@ -66,8 +118,10 @@ export const createProject = async (req, res) => {
         area: area || '1800 Sq.Ft',
         completionDate: completionDate || '',
         image: imagePath,
-        images: [imagePath],
+        images: allImages.length > 0 ? allImages : [imagePath],
         public_id: publicId,
+        brochureUrl,
+        brochure_public_id: brochurePublicId,
         featured: isFeatured
       });
 
@@ -86,8 +140,10 @@ export const createProject = async (req, res) => {
         area: area || '1800 Sq.Ft',
         completionDate: completionDate || '',
         image: imagePath,
-        images: [imagePath],
+        images: allImages.length > 0 ? allImages : [imagePath],
         public_id: publicId,
+        brochureUrl,
+        brochure_public_id: brochurePublicId,
         featured: isFeatured,
         createdAt: new Date().toISOString()
       };
@@ -171,8 +227,73 @@ export const getCompletedProjects = async (req, res) => {
 // @route   PUT /api/projects/:id
 export const updateProject = async (req, res) => {
   try {
-    const { name, location, type, status, price, description, bedrooms, area, completionDate, featured } = req.body;
+    const { name, location, type, status, price, description, bedrooms, area, completionDate, featured, existingImages } = req.body;
     const isFeatured = featured === 'true' || featured === true;
+
+    // Handle parsed existing images
+    let retainedImages = [];
+    if (existingImages) {
+      try {
+        retainedImages = typeof existingImages === 'string' ? JSON.parse(existingImages) : existingImages;
+      } catch (e) {
+        retainedImages = Array.isArray(existingImages) ? existingImages : [existingImages];
+      }
+    }
+
+    const mainImageFile = req.files?.image?.[0] || req.file;
+    const newImageFiles = req.files?.images || [];
+    const brochureFile = req.files?.brochure?.[0];
+
+    // Upload any newly uploaded additional images
+    const newlyUploadedImages = [];
+    for (const file of newImageFiles) {
+      if (mainImageFile && file.filename === mainImageFile.filename) continue;
+
+      let extraPath = `/uploads/projects/${file.filename}`;
+      if (isCloudinaryConfigured()) {
+        try {
+          const cloudRes = await uploadToCloudinary(file.path, 'real-estate/properties');
+          if (cloudRes && cloudRes.secure_url) {
+            extraPath = cloudRes.secure_url;
+          }
+        } catch (cErr) {
+          console.error('Cloudinary multi-image upload error:', cErr.message);
+        }
+      }
+      newlyUploadedImages.push(extraPath);
+    }
+
+    // Process primary image if a new one was uploaded
+    let newMainImagePath = '';
+    let newMainPublicId = '';
+    if (mainImageFile) {
+      newMainImagePath = `/uploads/projects/${mainImageFile.filename}`;
+      if (isCloudinaryConfigured()) {
+        const cloudRes = await uploadToCloudinary(mainImageFile.path, 'real-estate/properties');
+        if (cloudRes && cloudRes.secure_url) {
+          newMainImagePath = cloudRes.secure_url;
+          newMainPublicId = cloudRes.public_id;
+        }
+      }
+    }
+
+    // Process new brochure file if uploaded
+    let newBrochureUrl = '';
+    let newBrochurePublicId = '';
+    if (brochureFile) {
+      newBrochureUrl = `/uploads/projects/${brochureFile.filename}`;
+      if (isCloudinaryConfigured()) {
+        try {
+          const cloudRes = await uploadToCloudinary(brochureFile.path, 'real-estate/brochures');
+          if (cloudRes && cloudRes.secure_url) {
+            newBrochureUrl = cloudRes.secure_url;
+            newBrochurePublicId = cloudRes.public_id;
+          }
+        } catch (bErr) {
+          console.error('Cloudinary brochure upload error:', bErr.message);
+        }
+      }
+    }
 
     if (isDBConnected()) {
       const project = await Project.findById(req.params.id);
@@ -188,27 +309,37 @@ export const updateProject = async (req, res) => {
         if (completionDate !== undefined) project.completionDate = completionDate;
         if (featured !== undefined) project.featured = isFeatured;
 
-        if (req.file) {
+        // Determine base images list
+        let currentImages = existingImages !== undefined ? retainedImages : (project.images || [project.image]);
+        if (newMainImagePath && !currentImages.includes(newMainImagePath)) {
+          currentImages.unshift(newMainImagePath);
+        }
+        currentImages = [...currentImages, ...newlyUploadedImages];
+
+        // Ensure no empty or duplicates
+        project.images = Array.from(new Set(currentImages.filter(Boolean)));
+
+        if (newMainImagePath) {
           if (project.public_id) {
             await deleteFromCloudinary(project.public_id);
           } else {
             deleteFileFromDisk(project.image);
           }
+          project.image = newMainImagePath;
+          project.public_id = newMainPublicId;
+        } else if (project.images.length > 0) {
+          project.image = project.images[0];
+        }
 
-          let newImagePath = `/uploads/projects/${req.file.filename}`;
-          let newPublicId = '';
-
-          if (isCloudinaryConfigured()) {
-            const cloudRes = await uploadToCloudinary(req.file.path, 'real-estate/properties');
-            if (cloudRes && cloudRes.secure_url) {
-              newImagePath = cloudRes.secure_url;
-              newPublicId = cloudRes.public_id;
-            }
+        // Handle brochure replacement
+        if (newBrochureUrl) {
+          if (project.brochure_public_id) {
+            await deleteFromCloudinary(project.brochure_public_id, 'raw');
+          } else if (project.brochureUrl) {
+            deleteFileFromDisk(project.brochureUrl);
           }
-
-          project.image = newImagePath;
-          project.images = [newImagePath];
-          project.public_id = newPublicId;
+          project.brochureUrl = newBrochureUrl;
+          project.brochure_public_id = newBrochurePublicId;
         }
 
         const updatedProject = await project.save();
@@ -223,25 +354,21 @@ export const updateProject = async (req, res) => {
     }
 
     const current = inMemoryProjects[index];
-    let newImagePath = current.image;
-    let newPublicId = current.public_id || '';
-
-    if (req.file) {
-      if (current.public_id) {
-        await deleteFromCloudinary(current.public_id);
-      } else {
-        deleteFileFromDisk(current.image);
-      }
-
-      newImagePath = `/uploads/projects/${req.file.filename}`;
-      if (isCloudinaryConfigured()) {
-        const cloudRes = await uploadToCloudinary(req.file.path, 'real-estate/properties');
-        if (cloudRes && cloudRes.secure_url) {
-          newImagePath = cloudRes.secure_url;
-          newPublicId = cloudRes.public_id;
-        }
-      }
+    let currentImages = existingImages !== undefined ? retainedImages : (current.images || [current.image]);
+    if (newMainImagePath && !currentImages.includes(newMainImagePath)) {
+      currentImages.unshift(newMainImagePath);
     }
+    currentImages = [...currentImages, ...newlyUploadedImages];
+    const finalImages = Array.from(new Set(currentImages.filter(Boolean)));
+
+    let finalMainImage = newMainImagePath || current.image;
+    let finalPublicId = newMainPublicId || current.public_id || '';
+    if (!newMainImagePath && finalImages.length > 0) {
+      finalMainImage = finalImages[0];
+    }
+
+    let finalBrochureUrl = newBrochureUrl || current.brochureUrl || '';
+    let finalBrochurePublicId = newBrochurePublicId || current.brochure_public_id || '';
 
     inMemoryProjects[index] = {
       ...current,
@@ -255,9 +382,11 @@ export const updateProject = async (req, res) => {
       area: area || current.area,
       completionDate: completionDate !== undefined ? completionDate : current.completionDate,
       featured: featured !== undefined ? isFeatured : current.featured,
-      image: newImagePath,
-      images: [newImagePath],
-      public_id: newPublicId,
+      image: finalMainImage,
+      images: finalImages,
+      public_id: finalPublicId,
+      brochureUrl: finalBrochureUrl,
+      brochure_public_id: finalBrochurePublicId,
       updatedAt: new Date().toISOString()
     };
 
@@ -280,6 +409,11 @@ export const deleteProject = async (req, res) => {
         } else {
           deleteFileFromDisk(project.image);
         }
+        if (project.brochure_public_id) {
+          await deleteFromCloudinary(project.brochure_public_id, 'raw');
+        } else if (project.brochureUrl) {
+          deleteFileFromDisk(project.brochureUrl);
+        }
         await project.deleteOne();
         return res.status(200).json({ message: 'Project deleted successfully' });
       }
@@ -292,6 +426,11 @@ export const deleteProject = async (req, res) => {
         await deleteFromCloudinary(proj.public_id);
       } else {
         deleteFileFromDisk(proj.image);
+      }
+      if (proj.brochure_public_id) {
+        await deleteFromCloudinary(proj.brochure_public_id, 'raw');
+      } else if (proj.brochureUrl) {
+        deleteFileFromDisk(proj.brochureUrl);
       }
       inMemoryProjects.splice(index, 1);
       return res.status(200).json({ message: 'Project deleted successfully' });

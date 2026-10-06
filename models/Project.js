@@ -61,6 +61,14 @@ const projectSchema = new mongoose.Schema(
     featured: {
       type: Boolean,
       default: false
+    },
+    brochureUrl: {
+      type: String,
+      default: ''
+    },
+    brochure_public_id: {
+      type: String,
+      default: ''
     }
   },
   {

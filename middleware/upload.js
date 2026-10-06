@@ -26,10 +26,17 @@ const storage = multer.diskStorage({
 
 // File filter validation
 const fileFilter = (req, file, cb) => {
-  const allowedExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
   const ext = path.extname(file.originalname).toLowerCase();
   
-  if (allowedExtensions.includes(ext) && file.mimetype.startsWith('image/')) {
+  if (file.fieldname === 'brochure') {
+    if (ext === '.pdf' || file.mimetype === 'application/pdf') {
+      return cb(null, true);
+    }
+    return cb(new Error('Invalid brochure file type. Only PDF files are allowed.'), false);
+  }
+
+  const allowedImageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+  if (allowedImageExtensions.includes(ext) || file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
     cb(new Error('Invalid image file type. Only JPG, JPEG, PNG, and WEBP are allowed.'), false);
@@ -40,6 +47,6 @@ export const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 25 * 1024 * 1024 // 25MB limit
   }
 });
