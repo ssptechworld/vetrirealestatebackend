@@ -7,7 +7,8 @@ import {
   getProjectById,
   updateProject,
   deleteProject,
-  updateProjectStatus
+  updateProjectStatus,
+  getProjectBrochure
 } from '../controllers/projectController.js';
 import { upload } from '../middleware/upload.js';
 
@@ -50,6 +51,9 @@ router.route('/:id')
   .get(getProjectById)
   .put(projectUpload, updateProject)
   .delete(deleteProject);
+
+router.route('/:id/brochure')
+  .get(getProjectBrochure);
 
 router.route('/:id/status')
   .patch(updateProjectStatus);

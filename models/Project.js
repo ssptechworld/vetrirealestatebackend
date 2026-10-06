@@ -62,6 +62,25 @@ const projectSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    brochure: {
+      data: Buffer,
+      contentType: {
+        type: String,
+        default: 'application/pdf'
+      },
+      filename: {
+        type: String,
+        default: 'project-brochure.pdf'
+      },
+      size: {
+        type: Number,
+        default: 0
+      }
+    },
+    hasBrochure: {
+      type: Boolean,
+      default: false
+    },
     brochureUrl: {
       type: String,
       default: ''
