@@ -30,7 +30,7 @@ const deleteFileFromDisk = (imagePath) => {
 // @route   POST /api/projects
 export const createProject = async (req, res) => {
   try {
-    const { name, location, type, status, price, description, bedrooms, area, completionDate, featured } = req.body;
+    const { name, location, type, status, price, description, bedrooms, area, completionDate, yearBuilt, featured } = req.body;
 
     if (!name || !location || !price) {
       return res.status(400).json({ message: 'Name, location, and price are required fields.' });
@@ -127,6 +127,7 @@ export const createProject = async (req, res) => {
         bedrooms: bedrooms || '3 BHK',
         area: area || '1800 Sq.Ft',
         completionDate: completionDate || '',
+        yearBuilt: yearBuilt || '',
         image: imagePath,
         images: allImages.length > 0 ? allImages : [imagePath],
         public_id: publicId,
@@ -158,6 +159,7 @@ export const createProject = async (req, res) => {
         bedrooms: bedrooms || '3 BHK',
         area: area || '1800 Sq.Ft',
         completionDate: completionDate || '',
+        yearBuilt: yearBuilt || '',
         image: imagePath,
         images: allImages.length > 0 ? allImages : [imagePath],
         public_id: publicId,
@@ -196,18 +198,30 @@ const sanitizeProject = (proj) => {
   return p;
 };
 
-// @desc    Get all projects
+// @desc    Get all projects (with optional status query)
 // @route   GET /api/projects
 export const getProjects = async (req, res) => {
   try {
+    const filter = {};
+    if (req.query.status) {
+      filter.status = req.query.status.toLowerCase();
+    }
     if (isDBConnected()) {
-      const projects = await Project.find().select('-brochure.data').sort({ createdAt: -1 });
+      const projects = await Project.find(filter).select('-brochure.data').sort({ createdAt: -1 }).lean();
       return res.status(200).json(projects.map(sanitizeProject));
     } else {
-      return res.status(200).json(inMemoryProjects.map(sanitizeProject));
+      let result = inMemoryProjects;
+      if (filter.status) {
+        result = result.filter((p) => p.status?.toLowerCase() === filter.status);
+      }
+      return res.status(200).json(result.map(sanitizeProject));
     }
   } catch (error) {
-    res.status(200).json(inMemoryProjects.map(sanitizeProject));
+    let result = inMemoryProjects;
+    if (req.query.status) {
+      result = result.filter((p) => p.status?.toLowerCase() === req.query.status.toLowerCase());
+    }
+    res.status(200).json(result.map(sanitizeProject));
   }
 };
 
@@ -217,7 +231,7 @@ export const getProjectById = async (req, res) => {
   try {
     if (isDBConnected()) {
       if (mongoose.Types.ObjectId.isValid(req.params.id)) {
-        const project = await Project.findById(req.params.id).select('-brochure.data');
+        const project = await Project.findById(req.params.id).select('-brochure.data').lean();
         if (project) return res.status(200).json(sanitizeProject(project));
       }
     }
@@ -236,7 +250,7 @@ export const getProjectById = async (req, res) => {
 export const getOngoingProjects = async (req, res) => {
   try {
     if (isDBConnected()) {
-      const projects = await Project.find({ status: 'ongoing' }).select('-brochure.data').sort({ createdAt: -1 });
+      const projects = await Project.find({ status: 'ongoing' }).select('-brochure.data').sort({ createdAt: -1 }).lean();
       return res.status(200).json(projects.map(sanitizeProject));
     } else {
       const ongoing = inMemoryProjects.filter((p) => p.status === 'ongoing');
@@ -253,7 +267,7 @@ export const getOngoingProjects = async (req, res) => {
 export const getCompletedProjects = async (req, res) => {
   try {
     if (isDBConnected()) {
-      const projects = await Project.find({ status: 'completed' }).select('-brochure.data').sort({ createdAt: -1 });
+      const projects = await Project.find({ status: 'completed' }).select('-brochure.data').sort({ createdAt: -1 }).lean();
       return res.status(200).json(projects.map(sanitizeProject));
     } else {
       const completed = inMemoryProjects.filter((p) => p.status === 'completed');
@@ -265,11 +279,28 @@ export const getCompletedProjects = async (req, res) => {
   }
 };
 
+// @desc    Get upcoming projects
+// @route   GET /api/projects/status/upcoming
+export const getUpcomingProjects = async (req, res) => {
+  try {
+    if (isDBConnected()) {
+      const projects = await Project.find({ status: 'upcoming' }).select('-brochure.data').sort({ createdAt: -1 }).lean();
+      return res.status(200).json(projects.map(sanitizeProject));
+    } else {
+      const upcoming = inMemoryProjects.filter((p) => p.status === 'upcoming');
+      return res.status(200).json(upcoming.map(sanitizeProject));
+    }
+  } catch (error) {
+    const upcoming = inMemoryProjects.filter((p) => p.status === 'upcoming');
+    return res.status(200).json(upcoming.map(sanitizeProject));
+  }
+};
+
 // @desc    Update project
 // @route   PUT /api/projects/:id
 export const updateProject = async (req, res) => {
   try {
-    const { name, location, type, status, price, description, bedrooms, area, completionDate, featured, existingImages } = req.body;
+    const { name, location, type, status, price, description, bedrooms, area, completionDate, yearBuilt, featured, existingImages } = req.body;
     const isFeatured = featured === 'true' || featured === true;
 
     // Handle parsed existing images
@@ -356,6 +387,7 @@ export const updateProject = async (req, res) => {
         if (bedrooms) project.bedrooms = bedrooms;
         if (area) project.area = area;
         if (completionDate !== undefined) project.completionDate = completionDate;
+        if (yearBuilt !== undefined) project.yearBuilt = yearBuilt;
         if (featured !== undefined) project.featured = isFeatured;
 
         // Determine base images list
@@ -437,6 +469,7 @@ export const updateProject = async (req, res) => {
       bedrooms: bedrooms || current.bedrooms,
       area: area || current.area,
       completionDate: completionDate !== undefined ? completionDate : current.completionDate,
+      yearBuilt: yearBuilt !== undefined ? yearBuilt : current.yearBuilt,
       featured: featured !== undefined ? isFeatured : current.featured,
       image: finalMainImage,
       images: finalImages,
@@ -563,8 +596,8 @@ export const deleteProject = async (req, res) => {
 export const updateProjectStatus = async (req, res) => {
   try {
     const { status } = req.body;
-    if (!['ongoing', 'completed'].includes(status)) {
-      return res.status(400).json({ message: 'Status must be either ongoing or completed' });
+    if (!['ongoing', 'completed', 'upcoming'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be ongoing, completed, or upcoming' });
     }
 
     if (isDBConnected()) {

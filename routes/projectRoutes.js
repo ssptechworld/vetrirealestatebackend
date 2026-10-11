@@ -4,6 +4,7 @@ import {
   getProjects,
   getOngoingProjects,
   getCompletedProjects,
+  getUpcomingProjects,
   getProjectById,
   updateProject,
   deleteProject,
@@ -46,6 +47,9 @@ router.route('/status/ongoing')
 
 router.route('/status/completed')
   .get(getCompletedProjects);
+
+router.route('/status/upcoming')
+  .get(getUpcomingProjects);
 
 router.route('/:id')
   .get(getProjectById)

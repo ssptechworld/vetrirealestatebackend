@@ -21,7 +21,7 @@ const projectSchema = new mongoose.Schema(
     status: {
       type: String,
       required: [true, 'Project status is required'],
-      enum: ['ongoing', 'completed'],
+      enum: ['ongoing', 'completed', 'upcoming'],
       default: 'ongoing'
     },
     price: {
@@ -42,6 +42,10 @@ const projectSchema = new mongoose.Schema(
       default: '1800 Sq.Ft'
     },
     completionDate: {
+      type: String,
+      default: ''
+    },
+    yearBuilt: {
       type: String,
       default: ''
     },
@@ -94,5 +98,8 @@ const projectSchema = new mongoose.Schema(
     timestamps: true
   }
 );
+
+projectSchema.index({ status: 1, createdAt: -1 });
+projectSchema.index({ featured: 1, createdAt: -1 });
 
 export default mongoose.model('Project', projectSchema);
